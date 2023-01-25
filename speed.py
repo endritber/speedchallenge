@@ -5,32 +5,30 @@ import torch.nn as nn
 torch.set_printoptions(sci_mode=True)
 from tqdm import tqdm
 
-path = 'data/train.mp4'
-cap = cv2.VideoCapture(path)
 
+def load_data(PATH):
+  cap = cv2.VideoCapture(path)
+  pbar = tqdm(total=20400)
+  frames = []
+  while 1:
+    ret, frame = cap.read()
+    if not ret:
+      break
 
-pbar = tqdm(total=20400)
-frames = []
-while 1:
-  ret, frame = cap.read()
-  if not ret:
-    break
+    frame = frame.mean(axis=2)/256.0
+    frame = cv2.resize(frame, (320, 160))
+    frames.append(frame)
+    pbar.update(1)
 
-  frame = frame.mean(axis=2)/256.0
-  frame = cv2.resize(frame, (320, 160))
-  frames.append(frame)
-  pbar.update(1)
+  cap.release()
+  pbar.close()
+ 
+  with open('data/train.txt') as f:
+    labels = f.readlines()
 
-cap.release()
-pbar.close()
+  return np.array(frames, dtype=np.float32), np.array(labels, dtype=np.float32)
 
-x_train = np.array(frames, dtype=np.float32)
-with open('data/train.txt') as f:
-  y_train = f.readlines()
-
-y_train = np.array(y_train, dtype=np.float32)
-
-print('loaded', len(x_train), 'frames...')
+#x_train, y_train = load_data('data/train.mp4')
 
 #model
 class MLP(nn.Module):
