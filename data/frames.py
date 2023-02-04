@@ -38,20 +38,20 @@ def save():
     ret, frame = cap.read()
     if not ret:
       break
-
+    
+    frame = frame.mean(axis=2)
     path = DIR+"/"+SUBDIR + f"/frame{t+1}.jpg"
     cv2.imwrite(path, frame)
     if type(labels) == np.ndarray: label = labels[t]
     else: label = None
-    frames.append({"path": path, "label": label})
+    frames.append({"path": "data/"+path, "label": label})
     t+=1
     pbar.update(1)
 
   pbar.close()
   #create metadata
   with open(DIR+f'/metadata_{SUBDIR}.csv', 'w', newline='') as file:
-    writer = csv.DictWriter(file, fieldnames=["path", "label"])
-    writer.writeheader()
+    writer = csv.DictWriter(file, fieldnames=['path', 'label'])
     writer.writerows(frames)
 
 if __name__ == '__main__':
