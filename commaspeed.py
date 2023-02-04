@@ -1,6 +1,9 @@
-import cv2
+import os
+import time
+import csv
+from PIL import Image
+import torchvision.transforms as transforms
 import torch
-mps_device = torch.device("mps")
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import Dataset
@@ -8,146 +11,103 @@ from torch.utils.data.sampler import SequentialSampler
 import numpy as np
 from tqdm.auto import tqdm
 
-STREAM = 'data/train.mp4'
+DATASET = "data/comma/"
 
-def load_stream_frames(max_frames=20400):
-  print('loading data')
-  cap = cv2.VideoCapture(STREAM)
-  if not cap.isOpened():
-    print('cannot open stream')
-    exit()
+def fetch_metadata(path):
+  data = []
+  with open(os.path.join(DATASET+"metadata_"+path+".csv"), newline='') as csvfile:
+    reader = csv.reader(csvfile, delimiter=',')
+    for row in reader:
+      speed = np.float32(row[1])
+      data.append((row[0], speed))
+  print(f"got {path} metadata", len(data))
+  return data
 
-  with open(STREAM[:-4]+'.txt') as file:
-    labels = file.readlines()
+transform = transforms.Compose([
+  transforms.ToTensor(),
+  transforms.Resize((80, 160)),
+  transforms.Normalize((0.5), (0.5)),
+  # transforms.Normalize(
+  #      mean=[0.485, 0.456, 0.406],
+  #      std=[0.229, 0.224, 0.225]
+  #  )
+])
+def transform_frame(x):
+  frame = Image.open(x)
+  transformed_frame = transform(frame)
+  return transformed_frame
 
-  pbar = tqdm(total=max_frames)
-  idx = 0
-  frames = []
-  while True:
-    ret, frame = cap.read()
-    if not ret:
-      break
-    
-    frame = frame.mean(axis=2)/255.0
-    frame = cv2.resize(frame, (256, 128))
-    frames.append([frame, float(labels[idx])])
-    idx+=1
-    pbar.update(1)
-    if max_frames == idx+1:
-      break
-
-  pbar.close()
-  print('loaded data')
-  return frames
-
-class CommaData(Dataset):
-  def __init__(self, max_frames, val=False):
-    self.data = load_stream_frames(max_frames=max_frames)
+cache = {}
+class Comma(Dataset):
+  def __init__(self):
+    self.meta = fetch_metadata('train')
   
   def __len__(self):
-    return len(self.data)
+    return len(self.meta)
 
   def __getitem__(self, idx):
-      x, y = self.data[idx]
-      return x, y
-
-class ResBlock(nn.Module):
-  def __init__(self, c):
-    super().__init__()
-    self.block = nn.Sequential(
-      nn.Conv2d(c, c, 3, padding='same'),
-      nn.BatchNorm2d(c),
-      nn.ReLU(c),
-      nn.Conv2d(c, c, 3, padding='same'),
-      nn.BatchNorm2d(c))
-
-  def forward(self, x):
-    return nn.functional.relu(x + self.block(x))
+    if idx not in cache:
+      x, y = self.meta[idx]
+      cache[idx] = transform_frame(x), y
+      return cache[idx]
 
 class Rec(nn.Module):
   def __init__(self):
     super().__init__()
-    self.encode = nn.Sequential(
-      nn.Conv2d(1, 16, 3),
-      ResBlock(16),
-      ResBlock(16),
-      ResBlock(16),
+    H = 256
+    self.prepare = nn.Sequential(
+      nn.Linear(160, H),
+      nn.ReLU(),
+      nn.Linear(H, H),
+      nn.ReLU()
     )
-    self.flatten = nn.Linear(4064, 128)
-    self.gru = nn.GRU(128, 128, batch_first=True)
+    self.encoder = nn.GRU(H, H, batch_first=True)
     self.decode = nn.Sequential(
-       nn.Linear(128, 64),
-       nn.BatchNorm1d(64),
-       nn.ReLU(),
-       nn.Dropout(0.5),
-       nn.Linear(64, 1))
+      nn.Linear(H, H//2),
+      nn.ReLU(),
+      nn.Linear(H//2, 1)
+    )
 
   def forward(self, x):
-    # (batch, C, H, W)
-    x = self.encode(x).permute(0, 2, 1, 3) 
-    x = x.reshape(x.shape[0], x.shape[1], -1)
-    x = self.flatten(x)
-    x = self.gru(x)[0][:, -1]
+    x = self.prepare(x)
+    x = x.squeeze(1)
+    x = nn.functional.relu(self.encoder(x)[0][:, -1])
     x = self.decode(x)
     return x
 
-def get_loaders(max_frames, batch_size):
-  dataset = CommaData(max_frames)
-  # validation_split = 0.1
-  # indices = list(range(len(dataset)))
-  # split = int(np.floor(validation_split * len(dataset)))
-  # train_indices, val_indices = indices[split:], indices[:split]
-  
-  # train_sampler = SequentialSampler(train_indices)
-  # valid_sampler = SequentialSampler(val_indices)
-
-  trainloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, 
-                shuffle=True, num_workers=4)
-
-  # valloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, 
-  #               shuffle=False, num_workers=4, sampler=valid_sampler)
-
+def fetch_loader(batch_size):
+  dataset = Comma()
+  trainloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=4)
   return dataset, trainloader
 
 if __name__ == '__main__':
-  import time
-  batch_size = 32
-  #frames = 20400
-  frames = 16700
-  start = time.time()
-  dataset, trainloader = get_loaders(max_frames=frames, batch_size=batch_size)
-  print(time.time()-start, 'data_loaders')
+  mps_device = torch.device('mps')
+
+  timestamp = time.time()
+  epochs = 100
+  batch_size = 64
+  learning_rate = 0.01
+  dataset, trainloader = fetch_loader(batch_size=batch_size)
+  
   mse_loss = nn.MSELoss()
   model = Rec().to(mps_device)
+  model.load_state_dict(torch.load('models/commaspeed1675506016_3.pt'))
   #optimizer = optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
-  optimizer = optim.Adam(model.parameters(), lr=1e-3)
-  for epoch in range(100):
-    start = time.time()
+  optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+
+  for epoch in range(epochs):
     t = tqdm(trainloader, total=len(dataset)//batch_size)
-    print(time.time()-start, 'tqdm')
     model.train()
     for data in t:
       input, target = data
-      input = input.to(torch.float32).to(mps_device)[:, None, :, :]
-      target = target.to(torch.float32).to(mps_device)
+      input = input.to(mps_device)
+      target = target.to(mps_device)
       optimizer.zero_grad()
       yhat = model(input)
-      loss = mse_loss(yhat, target.unsqueeze(-1))
+      loss = mse_loss(yhat, target.unsqueeze(1))
+      #print(yhat[0], target.unsqueeze(1)[0])
       loss.backward()
       optimizer.step()
-      print(loss.item())
       t.set_description(f"loss {loss.item()}")
 
-    # with torch.no_grad():
-    #   model.eval()
-    #   running_vloss = 0.0
-    #   for i, vdata in enumerate(valloader):
-    #       vinputs, vlabels = vdata
-    #       vinputs = vinputs.to(torch.float32).to(mps_device)
-    #       vlabels = vlabels.to(torch.float32).to(mps_device)
-    #       voutputs = model(vinputs)
-    #       vloss = mse_loss(voutputs, vlabels.unsqueeze(-1))
-    #       running_vloss += vloss
-
-    # avg_vloss = running_vloss / (i + 1)
-    # print('train loss {} validation loss {}'.format(loss.item(), avg_vloss))
+    torch.save(model.state_dict(), f'models/commaspeed{int(timestamp)}_{epoch}.pt')

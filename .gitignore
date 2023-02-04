@@ -2,6 +2,7 @@
 models
 .*.swp
 data/comma
+models
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
