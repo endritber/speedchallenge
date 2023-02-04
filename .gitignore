@@ -1,6 +1,7 @@
 #Mine
-model
+models
 .*.swp
+data/comma
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
