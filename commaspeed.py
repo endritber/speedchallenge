@@ -68,31 +68,56 @@ class Rec(nn.Module):
   def __init__(self):
     super().__init__()
 
-    C=16
-    self.encode = nn.Sequential(
-      nn.Conv2d(1, C, 3, stride=(1, C//2), padding=(1, 0)),
-      ResBlock(C),
-      nn.MaxPool2d((2, 2)),
-      ResBlock(C),
-      nn.MaxPool2d((2, 2)),
-      ResBlock(C),
-    )
-    H = 180
-    self.flatten = nn.Linear(176, H)
+    C=8
+
+    self.encoder = nn.Sequential(
+        nn.Conv2d(1, C, 5, padding='same'),
+        nn.ReLU(),
+        nn.MaxPool2d((2, 2)),
+        nn.Conv2d(C, C*2, 5, padding='same'),
+        nn.ReLU(),
+        nn.MaxPool2d((2, 2)),
+        nn.Conv2d(C*2, C*4, 5, padding='same'),
+        nn.ReLU(),
+        nn.MaxPool2d((2, 2)),
+        nn.Conv2d(C*4, C*8, 5, padding='same'),
+        nn.ReLU(),
+        nn.MaxPool2d((2, 2)),
+        nn.Conv2d(C*8, C*16, 5, padding='same'),
+        nn.ReLU(),
+        nn.MaxPool2d((2, 2)),
+        nn.Conv2d(C*16, C*32, 5, padding='same'),
+        nn.ReLU(),
+        nn.MaxPool2d((2, 2)),
+      )
+
+    # self.encode = nn.Sequential(
+    #   nn.Conv2d(1, C, 3, stride=(1, C//2), padding=(1, 0)),
+    #   ResBlock(C),
+    #   nn.MaxPool2d((2, 2)),
+    #   ResBlock(C),
+    #   nn.MaxPool2d((2, 2)),
+    #   ResBlock(C),
+    # )
+    H = 512
+    self.flatten = nn.Linear(2816, H)
     self.gru = nn.GRU(H, H, batch_first=True)
     self.decode = nn.Sequential(
-      nn.Linear(45*180, H//2),
-      nn.BatchNorm1d(H//2),
+      nn.Linear(256*2*5, H//4),
       nn.ReLU(),
-      nn.Linear(H//2, 1))
+      nn.Dropout(0.5),
+      nn.Linear(H//4, 1))
 
   def forward(self, x):
-    x = self.encode(x[:, None]) # (batch, C, H, W)
-    x = x.permute(2, 0, 1, 3) # (H, batch, C, W)
-    x = x.reshape(x.shape[0], x.shape[1], -1)
-    x = self.flatten(x)
-    x = self.gru(x)[0]
-    x = x.permute(1, 0, 2)
+    x = self.encoder(x[:, None])
+
+    # (batch, C, H, W)
+    # x = x.permute(2, 0, 1, 3) # (H, batch, C, W)
+    # x = x.reshape(x.shape[0], x.shape[1], -1)
+    # x = self.flatten(x)
+    # x = self.gru(x)[0]
+    # x = x.permute(1, 0, 2)
+    # print(x.shape)
     x = torch.flatten(x, start_dim=1)
     x = self.decode(x)
     return x
@@ -101,7 +126,7 @@ class Rec(nn.Module):
 def train():
   timestamp = time.time()
   epochs = 100
-  batch_size = 64
+  batch_size = 128
   learning_rate = 0.001
 
   if WAN:
@@ -114,35 +139,38 @@ def train():
 
   mse_loss = nn.MSELoss().to(DEVICE)
   model = Rec().to(DEVICE)  
-  #model.load_state_dict(torch.load('models/commaspeed1675678052_1.pt'))
-  optimizer = optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9)
-  #optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+  model.load_state_dict(torch.load('models/commaspeed1675709833_0.pt'))
+  #optimizer = optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9)
+  optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 
   split = int(X.shape[0]*0.9)
   trains = [x for x in list(range(split))*4]
+  vals = [x for x in range(split, X.shape[0])]
+  val_batches = np.array(vals)[:len(vals)//batch_size * batch_size].reshape(-1, batch_size)
+  
+  # Change learning rate 
+  scheduler = optim.lr_scheduler.OneCycleLR(optimizer, max_lr=learning_rate, pct_start=0.2,
+    steps_per_epoch=len(trains)//batch_size, epochs=epochs, anneal_strategy='linear', verbose=False)
 
   for epoch in range(epochs):
     if WAN:
       wandb.watch(model)
 
-    # with torch.no_grad():
-    #   model.eval()
-    #   #evaluate
-    #   val_losses = []
-    #   for valdata in (t:=tqdm(validation_loader)):
-    #     valinput, valtarget = valdata
-    #     valinput = valinput.to(mps_device)
-    #     valtarget = valtarget.to(mps_device)
-    #     valyhat = model(valinput)
-    #     valloss = mse_loss(valyhat, valtarget.unsqueeze(1))
-    #     t.set_description(f"val loss {valloss.item():.2f}")
-    #     val_losses.append(valloss)
-    #     if WAN:
-    #       wandb.log({"val_loss": valloss})
-    #       wandb.log({"val_actual_speed": torch.mean(valtarget)})
-    #       wandb.log({"val_predicted_speed": torch.mean(valyhat.squeeze(1))})
-    #   val_loss = torch.mean(torch.tensor(val_losses)).item()
-    #   print(f"avg val_loss: {val_loss:.2f}")
+    with torch.no_grad():
+      model.eval()
+      #evaluate
+      val_losses = []
+      for valsample in (t:=tqdm(val_batches)):
+        valinput, valtarget = get_sample(valsample)
+        valtarget = valtarget.to(DEVICE)
+        valyhat = model(valinput)
+        valloss = mse_loss(valyhat, valtarget.unsqueeze(1))
+        t.set_description(f"val loss {valloss.item():.2f}")
+        val_losses.append(valloss)
+        if WAN:
+          wandb.log({"val_loss": valloss})
+      val_loss = torch.mean(torch.tensor(val_losses)).item()
+      print(f"avg val_loss: {val_loss:.2f}")
 
     model.train()
     #random.shuffle(trains)

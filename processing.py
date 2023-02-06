@@ -1,5 +1,6 @@
 import os
 import csv
+import cv2
 import functools
 from tqdm.auto import tqdm
 import numpy as np
@@ -19,21 +20,26 @@ def fetch_metadata(path):
       data.append((row[0], speed))
   return data
 
-transform = transforms.Compose([
-  transforms.ToTensor(),
-  transforms.Resize((180, 360)),
-  transforms.Normalize((0.5), (0.5)),
-])
-def transform_frame(x):
-  frame = Image.open(x)
-  transformed_frame = transform(frame)/256.0
-  return transformed_frame
+def read_frame(x):
+  frame = cv2.imread(x)
+  frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY).transpose(1, 0)
+  print(frame.shape)
+  tensor = torch.tensor(frame, dtype=torch.float32)
+  return tensor
 
 if __name__ == "__main__":
+
+  TEST = os.getenv('TEST') != None
+
+  if not False:
+    TEST = 'test'
+  else:
+    TEST = 'train'
+
   meta = fetch_metadata('train')
   x, y = [], []
   for frame, label in tqdm(meta):
-    x.append(transform_frame(frame))
+    x.append(read_frame(frame))
     y.append(label)
 
   x = torch.stack(x)
