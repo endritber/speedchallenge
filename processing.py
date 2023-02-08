@@ -1,50 +1,33 @@
-import os
-import csv
-import cv2
-import functools
-from tqdm.auto import tqdm
+from PIL import Image, ImageEnhance
 import numpy as np
-from PIL import Image
-import torch
-import torchvision.transforms as transforms
+import cv2
 
-DATASET = "data/comma/"
+C, W, H = 3, 220, 60
+RESIZE = (W, H)
+HSV = np.zeros((H, W, C), dtype=np.float32)
+HSV[..., 1] = 255
 
-@functools.lru_cache(None)
-def fetch_metadata(path):
-  data = []
-  with open(os.path.join(DATASET+"metadata_"+path+".csv"), newline='') as csvfile:
-    reader = csv.reader(csvfile, delimiter=',')
-    for row in reader:
-      speed = np.float32(row[1])
-      data.append((row[0], speed))
-  return data
+def augment(frame, brightness=True):
+  if brightness:
+    frame = Image.fromarray(frame)
+    brightness = np.random.uniform(0.5, 1.5)
+    frame = ImageEnhance.Brightness(frame).enhance(brightness)
+    color = np.random.uniform(0.5, 1.5)
+    frame = ImageEnhance.Brightness(frame).enhance(color)
+    frame = np.asarray(frame, dtype=np.float32)
+  return frame
 
-def read_frame(x):
-  frame = cv2.imread(x)
-  frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY).transpose(1, 0)
-  print(frame.shape)
-  tensor = torch.tensor(frame, dtype=torch.float32)
-  return tensor
+def process_frame(frame):
+  frame = cv2.resize(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY), RESIZE)
+  return frame
 
-if __name__ == "__main__":
-
-  TEST = os.getenv('TEST') != None
-
-  if not False:
-    TEST = 'test'
-  else:
-    TEST = 'train'
-
-  meta = fetch_metadata('train')
-  x, y = [], []
-  for frame, label in tqdm(meta):
-    x.append(read_frame(frame))
-    y.append(label)
-
-  x = torch.stack(x)
-  x = x.to(torch.float32)
-
-  print('saving...')
-  torch.save(x, "data/comma_speed_x.pt")
-  torch.save(torch.tensor(y, dtype=torch.float32), "data/comma_speed_y.pt")
+def calculate_opticalflow(previous_frame, current_frame, brightness=True):
+  previous_frame, current_frame = process_frame(augment(previous_frame)), process_frame(augment(current_frame))
+  flow = cv2.calcOpticalFlowFarneback(previous_frame, current_frame, None, 0.5, 3, 15, 3, 5, 1.2, 0)
+  magnitude, angle = cv2.cartToPolar(flow[...,0], flow[...,1])
+  HSV[..., 0] = angle*180/np.pi/2
+  HSV[..., 2] = cv2.normalize(magnitude, None, 0, 255, cv2.NORM_MINMAX)
+  #print(HSV.shape)
+  flow = cv2.cvtColor(HSV, cv2.COLOR_HSV2BGR)
+  print(flow)
+  return flow
