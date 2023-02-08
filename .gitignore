@@ -3,7 +3,7 @@ models
 .*.swp
 data/comma
 data/comma*
-models
+model
 wandb
 .DS_Store
 
