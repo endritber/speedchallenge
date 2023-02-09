@@ -6,7 +6,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
-from model import SpeedNet
+from model import SpeedNet, NVidiaNet
 
 # SpeedNet()(torch.zeros((64, 3, 50, 160)))
 # exit()
@@ -24,8 +24,10 @@ if __name__ == '__main__':
   train_dataloader = DataLoader(comma_speed_dataset_train, batch_size=batch_size, shuffle=True, num_workers=4)
   val_dataloader = DataLoader(comma_speed_dataset_val, batch_size=batch_size, shuffle=False, num_workers=4)
 
-  model = SpeedNet().to(device)
-  model.load_state_dict(torch.load("models/speednet_1675933583_25.pt"))
+  #model = SpeedNet().to(device)
+  #model.load_state_dict(torch.load("demo/speednet_1675938944_53.pt"))
+  model = NVidiaNet().to(device)
+  
   #optimizer = optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9)
   optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 
@@ -60,4 +62,4 @@ if __name__ == '__main__':
       t.set_description(f"epoch {epoch}: train loss {loss.item():.2f}")
     print(f'epoch {epoch} -> train loss:', torch.tensor(train_losses).mean().item())
     
-    torch.save(model.state_dict(), f'model/speednet_{int(timestamp)}_{epoch}.pt')
+    torch.save(model.state_dict(), f'models/nvidianet_{int(timestamp)}_{epoch}.pt')

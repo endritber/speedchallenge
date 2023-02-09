@@ -3,6 +3,37 @@ import torch.nn as nn
 from torchvision.models import resnet34, ResNet34_Weights
 
 
+class NVidiaNet(nn.Module):
+  def __init__(self):
+    super(NVidiaNet, self).__init__()
+    self.encoder = nn.Sequential(
+      nn.BatchNorm2d(3),
+      nn.Conv2d(3, 24, (5, 5), stride=(2, 2)),
+      nn.ELU(),
+      nn.Conv2d(24, 36, (5, 5), stride=(2, 2)),
+      nn.ELU(),
+      nn.Conv2d(36, 48, (5, 5), stride=(2, 2)),
+      nn.ELU(),
+      nn.Dropout(0.4),
+      nn.Conv2d(48, 64, (3, 3), stride=(1, 1), padding=1),
+      nn.ELU(),
+      nn.Conv2d(64, 64, (3, 3), stride=(1, 1)),
+      nn.ELU(),
+    )
+    self.decoder = nn.Sequential(
+      nn.Linear(64*15, 50),
+      nn.ELU(),
+      nn.Linear(50, 10),
+      nn.ELU(),
+      nn.Linear(10, 1)
+    )
+
+  def forward(self, x):
+    x = self.encoder(x)
+    x = torch.flatten(x, start_dim=1)
+    x = self.decoder(x)
+    return x
+
 class SpeedNet(nn.Module):
   def __init__(self):
     super(SpeedNet, self).__init__()
@@ -38,3 +69,7 @@ class SpeedNet(nn.Module):
     x = torch.flatten(x, start_dim=1)
     x = self.linear(x)
     return x
+
+if __name__ == "__main__":
+  NVidiaNet()(torch.zeros((64, 3, 50, 160)))
+  exit()

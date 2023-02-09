@@ -26,7 +26,6 @@ def process_frames(current_frame, next_frame, augmentation):
   next_frame = cv2.cvtColor(np.asarray(next_frame, dtype=np.float32), cv2.COLOR_BGR2GRAY)
   return current_frame, next_frame
 
-
 def calculate_opticalflow(current_frame, next_frame, augmentation=True):
   current_frame, next_frame = process_frames(current_frame, next_frame, augmentation)
   flow = cv2.calcOpticalFlowFarneback(current_frame, next_frame, None, 0.5, 3, 15, 3, 5, 1.2, 0)

@@ -1,4 +1,5 @@
 models
+demo
 .*.swp
 wandb
 .DS_Store
