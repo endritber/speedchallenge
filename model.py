@@ -2,7 +2,6 @@ import torch
 import torch.nn as nn
 from torchvision.models import resnet34, ResNet34_Weights
 
-
 class NVidiaNet(nn.Module):
   def __init__(self):
     super(NVidiaNet, self).__init__()
@@ -25,8 +24,7 @@ class NVidiaNet(nn.Module):
       nn.ELU(),
       nn.Linear(50, 10),
       nn.ELU(),
-      nn.Linear(10, 1)
-    )
+      nn.Linear(10, 1))
 
   def forward(self, x):
     x = self.encoder(x)
@@ -34,9 +32,9 @@ class NVidiaNet(nn.Module):
     x = self.decoder(x)
     return x
 
-class SpeedNet(nn.Module):
+class SpeedResNet34(nn.Module):
   def __init__(self):
-    super(SpeedNet, self).__init__()
+    super(SpeedResNet34, self).__init__()
     resnet = list(resnet34(weights=ResNet34_Weights.DEFAULT).children())[:-4] #except last 2 layers    
     self.conv_seq1 = nn.Sequential(
       nn.BatchNorm2d(3),
