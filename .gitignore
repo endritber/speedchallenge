@@ -1,12 +1,7 @@
-#Mine
 models
 .*.swp
-data/comma
-data/comma*
-model
 wandb
 .DS_Store
-
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
