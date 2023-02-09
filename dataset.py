@@ -26,7 +26,7 @@ class CommaSpeedDataset(Dataset):
   def __init__(self, path, augmentation=True, validation=False):
     self.augmentation = augmentation
     self.metadata = load_metadata(path)
-    self.metadata = pd.DataFrame(self.metadata, columns=['curr_frame', 'next_frame', 'speed'])
+    self.metadata = pd.DataFrame(self.metadata, columns=['current_frame', 'next_frame', 'speed'])
     trainval = self.metadata.iloc[:-1200]
     self.metadata = trainval.sample(frac=0.8,random_state=200)
 
@@ -38,9 +38,7 @@ class CommaSpeedDataset(Dataset):
 
   def __getitem__(self, index):
     row = self.metadata.iloc[index]
-    pf = cv2.imread(row['curr_frame'])
-    nf = cv2.imread(row['next_frame'])
-    flow = calculate_opticalflow(pf, nf, augmentation=self.augmentation)
+    flow = calculate_opticalflow(row['current_frame'], row['next_frame'], augmentation=self.augmentation)
     return transform(flow), row['speed']
   
 if __name__ == '__main__':
