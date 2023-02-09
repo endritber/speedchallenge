@@ -6,7 +6,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
-from speednet import SpeedNet
+from model import SpeedNet
 
 # SpeedNet()(torch.zeros((64, 3, 50, 160)))
 # exit()
@@ -25,7 +25,7 @@ if __name__ == '__main__':
   val_dataloader = DataLoader(comma_speed_dataset_val, batch_size=batch_size, shuffle=False, num_workers=4)
 
   model = SpeedNet().to(device)
-  model.load_state_dict(torch.load("model/speednet_1675904141_25.pt"))
+  model.load_state_dict(torch.load("models/speednet_1675933583_25.pt"))
   #optimizer = optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9)
   optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 
@@ -42,8 +42,8 @@ if __name__ == '__main__':
       val_loss = F.mse_loss(val_out, val_target.unsqueeze(1))
       t.set_description(f"val loss {val_loss.item():.2f}")
       val_losses.append(val_loss.item())
-    print(f'epoch {epoch} -> val loss:', torch.tensor(val_losses).mean().item())
-    print("#######################################################")
+    print(f'val loss:', torch.tensor(val_losses).mean().item())
+    print("#######################################################\nMODEL TRAINING")
 
     train_losses = []
     model.train()

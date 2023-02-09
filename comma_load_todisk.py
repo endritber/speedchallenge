@@ -6,7 +6,6 @@ import csv
 import cv2 
 import numpy as np
 
-
 path='train'
 DATA_PATH = f'data/{path}.mp4'
 COMMA_SPEED_PATH = '/tmp/comma/speed'
