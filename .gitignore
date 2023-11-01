@@ -1,5 +1,7 @@
 # .
-yolov8n-seg.pt
+data/*.pt
+data/splits
+data/preprocessed
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
