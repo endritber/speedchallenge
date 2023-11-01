@@ -1,6 +1,6 @@
 # .
 data/*.pt
-data/splits
+data/segments
 data/preprocessed
 
 # Byte-compiled / optimized / DLL files
