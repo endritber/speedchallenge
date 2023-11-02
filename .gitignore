@@ -2,6 +2,8 @@
 data/*.pt
 data/segments
 data/preprocessed
+.DS_Store
+dats/.DS_Store
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
