@@ -4,6 +4,7 @@ data/segments
 data/preprocessed
 .DS_Store
 dats/.DS_Store
+models
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
