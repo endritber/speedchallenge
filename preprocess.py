@@ -15,9 +15,11 @@ def preprocess(foundation, filename, filename_out, transform=None):
   if not os.path.exists(OUTPUT_PATH): os.makedirs(OUTPUT_PATH)
   print('preprocessing', filename, filename_out)
   frms = []
-  for frm in tqdm(video.gen_frames_from_file(filename, foundation)):
+  for frm, _ in tqdm(video.gen_frames_from_file(filename, foundation)):
     frms.append(frm)
+  
 
+  frms = frms[0:2] + frms + frms[-1:]
   big_x = torch.Tensor((np.concatenate([x.reshape(1, 160, 320, 3) for x in frms])))
   print(f"INFO: saving {filename_out} | shape:{big_x.shape}")
   torch.save({"x": big_x}, filename_out)
@@ -27,3 +29,4 @@ if __name__ == '__main__':
   for filename in os.listdir(DATA_PATH):
     if filename.endswith('.mp4'):
       preprocess(foundation, os.path.join(DATA_PATH, filename), os.path.join(OUTPUT_PATH, filename.replace('.mp4', ".pt")), None)
+      print('#'*125)
