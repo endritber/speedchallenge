@@ -26,7 +26,7 @@ def get_foundation():
     return diff
   return foundation
 
-def process_frame(frame, bright_factor=0.2 + np.random.uniform()):
+def process_frame(frame, bright_factor):
   hsv_frame = cv2.cvtColor(frame, cv2.COLOR_RGB2HSV)
   hsv_frame[:, :, 0] = hsv_frame[:, :, 0] * bright_factor  
   frm = cv2.cvtColor(hsv_frame, cv2.COLOR_HSV2RGB)
@@ -37,8 +37,7 @@ def process_frame(frame, bright_factor=0.2 + np.random.uniform()):
 
 def optical_flowdense_farneback(previous_frame, current_frame, rgb):
     hsv = np.zeros((160, 320, 3))
-    hsv[: :, 1] = cv2.cvtColor(rgb, cv2.COLOR_RGB2HSV)[:, 1, :]
- 
+    
     flow_mat = None
     image_scale = 0.5
     nb_images = 1
@@ -46,40 +45,39 @@ def optical_flowdense_farneback(previous_frame, current_frame, rgb):
     nb_iterations = 2
     deg_expansion = 5
     STD = 1.3
-
+    
     opflow = cv2.calcOpticalFlowFarneback(
       previous_frame, current_frame,  
       flow_mat, image_scale, nb_images, 
       win_size, nb_iterations, deg_expansion, STD, 0)
                                         
     mag, ang = cv2.cartToPolar(opflow[..., 0], opflow[..., 1])  
+    
+    hsv[:, :, 1] = cv2.cvtColor(rgb, cv2.COLOR_RGB2HSV)[:, :, 1]
     hsv[:, :, 0] = ang * (180/ np.pi / 2)
-    hsv[:,:,2] = cv2.normalize(mag,None,0,255,cv2.NORM_MINMAX)
+    hsv[:, :, 2] = cv2.normalize(mag, None, 0, 255, cv2.NORM_MINMAX)
     hsv = np.asarray(hsv, dtype= np.float32)
-    flow = cv2.cvtColor(hsv,cv2.COLOR_HSV2RGB)
-    flow = cv2.normalize(flow, None, norm_type=cv2.NORM_MINMAX)
+    flow = cv2.cvtColor(hsv, cv2.COLOR_HSV2RGB)
     return flow
 
 def gen_frames_from_file(filename, foundation):
-  cap = cv2.VideoCapture(filename)
+  cap = cv2.VideoCapture(filename)    
   ret, frame = cap.read()
-  previous_frame = process_frame(foundation(frame))
-  # frms = []
+  previous_frame = process_frame(foundation(frame), 0.2*np.random.uniform())
+  frms = []
   while cap.isOpened():
     ret, frame = cap.read()
     if ret is None or not ret: break
     fframe = foundation(frame)
-    current_frame = process_frame(fframe)
+    current_frame = process_frame(fframe, 0.2*np.random.uniform())
     rgb = fframe[196:-196, 232:-232] # Crop RGB
     flow = optical_flowdense_farneback(previous_frame, current_frame, rgb=cv2.resize(rgb, (320, 160), interpolation = cv2.INTER_AREA))
-    yield flow
-    # frms.append(flow)
-    # previous_frame = current_frame.copy()
-    # frms = frms[-3:] # Last 3 flow frames
-    # if len(frms) == 3:
-    #   print(np.array(frms).shape)
-    #   frmsq = np.array(frms).transpose(1, 2, 0)
-    #   yield frmsq, frame
+    previous_frame = current_frame.copy()
+    frms.append(flow.mean(axis=2))
+    frms = frms[-3:] # Last 3 mean flows
+    if len(frms) == 3:
+      frmsq = cv2.normalize(np.array(frms), None, norm_type=cv2.NORM_MINMAX)
+      yield frmsq, frame # Return original frame also for imshow
 
 def load_segments_todisk(video_path, labels_path, output_path):
   if not os.path.exists(output_path): os.makedirs(output_path)
