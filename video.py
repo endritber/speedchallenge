@@ -26,25 +26,60 @@ def get_foundation():
     return diff
   return foundation
 
-def process_frame(frm):
-  frm = frm.mean(axis=2)/256.
+def process_frame(frame, bright_factor=0.2 + np.random.uniform()):
+  hsv_frame = cv2.cvtColor(frame, cv2.COLOR_RGB2HSV)
+  hsv_frame[:, :, 0] = hsv_frame[:, :, 0] * bright_factor  
+  frm = cv2.cvtColor(hsv_frame, cv2.COLOR_HSV2RGB)
+  frm = frm.mean(axis=2)
   frm = frm[196:-196, 232:-232]
-  frm = cv2.resize(frm, (320, 160))
+  frm = cv2.resize(frm, (320, 160), interpolation = cv2.INTER_AREA) 
   return frm
+
+def optical_flowdense_farneback(previous_frame, current_frame, rgb):
+    hsv = np.zeros((160, 320, 3))
+    hsv[: :, 1] = cv2.cvtColor(rgb, cv2.COLOR_RGB2HSV)[:, 1, :]
+ 
+    flow_mat = None
+    image_scale = 0.5
+    nb_images = 1
+    win_size = 15
+    nb_iterations = 2
+    deg_expansion = 5
+    STD = 1.3
+
+    opflow = cv2.calcOpticalFlowFarneback(
+      previous_frame, current_frame,  
+      flow_mat, image_scale, nb_images, 
+      win_size, nb_iterations, deg_expansion, STD, 0)
+                                        
+    mag, ang = cv2.cartToPolar(opflow[..., 0], opflow[..., 1])  
+    hsv[:, :, 0] = ang * (180/ np.pi / 2)
+    hsv[:,:,2] = cv2.normalize(mag,None,0,255,cv2.NORM_MINMAX)
+    hsv = np.asarray(hsv, dtype= np.float32)
+    flow = cv2.cvtColor(hsv,cv2.COLOR_HSV2RGB)
+    flow = cv2.normalize(flow, None, norm_type=cv2.NORM_MINMAX)
+    return flow
 
 def gen_frames_from_file(filename, foundation):
   cap = cv2.VideoCapture(filename)
-  frms = []
+  ret, frame = cap.read()
+  previous_frame = process_frame(foundation(frame))
+  # frms = []
   while cap.isOpened():
     ret, frame = cap.read()
     if ret is None or not ret: break
-    frm = foundation(frame)
-    frm = process_frame(frm)
-    frms.append(frm)
-    frms = frms[-3:] # get last 3 grayscales frames to create 3 channels
-    if len(frms) == 3:
-      frmsq = np.array(frms).transpose(1, 2, 0)
-      yield frmsq, frame
+    fframe = foundation(frame)
+    current_frame = process_frame(fframe)
+    rgb = fframe[196:-196, 232:-232] # Crop RGB
+    flow = optical_flowdense_farneback(previous_frame, current_frame, rgb=cv2.resize(rgb, (320, 160), interpolation = cv2.INTER_AREA))
+    yield flow
+    # frms.append(flow)
+    # previous_frame = current_frame.copy()
+    # frms = frms[-3:] # Last 3 flow frames
+    # if len(frms) == 3:
+    #   print(np.array(frms).shape)
+    #   frmsq = np.array(frms).transpose(1, 2, 0)
+    #   yield frmsq, frame
 
 def load_segments_todisk(video_path, labels_path, output_path):
   if not os.path.exists(output_path): os.makedirs(output_path)
@@ -64,7 +99,7 @@ def load_segments_todisk(video_path, labels_path, output_path):
     if frame_count % frames_per_segment == 0:
       if frame_count > 0:
         with open(f'{output_path}/train_{counter}.txt', 'w') as file:
-          file.writelines(segment_labels[2:]) # Don't include the first two
+          file.writelines(segment_labels)
         segment_labels = []
         out.release()
       counter += 1
