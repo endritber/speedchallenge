@@ -22,9 +22,9 @@ def get_state_dict(self, *args, **kwargs):
     return load_state_dict_from_url(self.url, *args, **kwargs)
 WeightsEnum.get_state_dict = get_state_dict
 
-def build_model(pretrained=True, fine_tune=True, num_classes=1):
-  if pretrained: print('INFO: loading pretrained model')
-  model = torchvision.models.efficientnet_b0(pretrained=pretrained); print('Running:', model._get_name())
+def build_model(fine_tune=True, weights=None):
+  if weights: print('INFO: loading pretrained model')
+  model = torchvision.models.efficientnet_b3(weights=weights); print('Running:', model._get_name())
   for params in model.parameters():
     if fine_tune: params.requires_grad = True
     else: params.requires_grad = False
@@ -40,20 +40,8 @@ def run(data, kfold=False):
     val_data = [torch.cat(data[0][split:n], dim=0), torch.cat(data[1][split:n], dim=0)]
     train(train_data, val_data)
 
-def test_step(batch, data):
-  losses = []
-  with torch.no_grad():
-    model.eval()
-    for samples in (t:=tqdm(batch)):
-      inputs, targets = load_batch_samples(samples, data, device)
-      outputs = model(inputs).squeeze(1)
-      loss = F.mse_loss(outputs, targets)
-      losses.append(loss.item())
-      t.set_description(f'Validating: mse_loss {loss.item():.3f}')
-    return losses
-
-def train_step(batch, data, epoch):
-  model.train()
+def train_epoch(batch, data, desc, epoch=None, val_loss=None):
+  print('-'*50)
   losses = []
   for samples in (t:=tqdm(batch)):
     optimizer.zero_grad()
@@ -61,9 +49,12 @@ def train_step(batch, data, epoch):
     outputs = model(inputs).squeeze(1)
     loss = F.mse_loss(outputs, targets)
     losses.append(loss.item())
-    loss.backward()
-    optimizer.step()
-    t.set_description(f'Training: [{epoch}|{epochs}] | mse_loss: {loss.item():.3f}')      
+    if model.training:
+      loss.backward()
+      optimizer.step()
+      if epoch > 1:
+        scheduler.step(val_loss)
+    t.set_description(f'{desc}: mse_loss: {loss.item():.3f}')      
   return losses
 
 def train(train_data, val_data):
@@ -71,14 +62,16 @@ def train(train_data, val_data):
   val_batches = load_batch_indexes(np.arange(val_data[0].shape[0]), batch_size=batch_size)
   last = time.monotonic()
   for epoch in range(1, epochs+1):
-    val_losses = test_step(val_batches, val_data)
-    train_losses = train_step(load_batch_indexes(np.arange(train_data[0].shape[0]), \
-                batch_size=batch_size, shuffle=True), train_data, epoch)
-    tlosses.extend(val_losses)
-    vlosses.extend(train_losses)
+    model.eval()
+    val_losses = train_epoch(val_batches, val_data, 'Validating')
+    val_loss = torch.mean(torch.tensor(val_losses)).item()
+    train_batches = load_batch_indexes(np.arange(train_data[0].shape[0]), batch_size=batch_size, shuffle=True)
+    model.train()
+    train_losses = train_epoch(train_batches, train_data, 'Training', epoch, val_loss)
+    tlosses.extend(val_losses); vlosses.extend(train_losses)
     epoch_time = time.monotonic() - last     
     print(f"Training (time) in {epoch_time * epochs // 60} min | Done (time) in {epoch_time * (epochs - epoch) // 60} min"); last = time.monotonic()
-    save_model(fn=f"models/{model._get_name()}_{TIMESTAMP}_{epoch}_{torch.mean(torch.tensor(val_losses)).item():.2f}.pt")
+    save_model(fn=f"models/{model._get_name()}_{TIMESTAMP}_{epoch}_{val_loss:.2f}.pt")
   
   import matplotlib.pyplot as plt
   plt.plot(vlosses)
@@ -120,13 +113,20 @@ if __name__ == '__main__':
   batch_size = 32
   lr = 1e-4
 
-  model = build_model(pretrained=True, fine_tune=True).to(device)
+  model = build_model(weights=torchvision.models.EfficientNet_B3_Weights.DEFAULT, fine_tune=True).to(device)
   if LOAD:
     model_path = sys.argv[-1]
     print('INFO: loading saved model', model_path)
     model.load_state_dict(torch.load(model_path))
  
   optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+  scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+    optimizer=optimizer,
+    factor=0.1, 
+    patience=3,
+    verbose=1,
+    min_lr=1e-6,
+    cooldown=2)
 
   dataset = load_data()
   run(dataset)
