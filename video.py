@@ -36,8 +36,6 @@ def process_frame(frame, bright_factor):
   return frm
 
 def optical_flowdense_farneback(previous_frame, current_frame, rgb):
-    hsv = np.zeros((160, 320, 3))
-    
     flow_mat = None
     image_scale = 0.5
     nb_images = 1
@@ -45,14 +43,14 @@ def optical_flowdense_farneback(previous_frame, current_frame, rgb):
     nb_iterations = 2
     deg_expansion = 5
     STD = 1.3
-    
+
     opflow = cv2.calcOpticalFlowFarneback(
       previous_frame, current_frame,  
       flow_mat, image_scale, nb_images, 
       win_size, nb_iterations, deg_expansion, STD, 0)
                                         
     mag, ang = cv2.cartToPolar(opflow[..., 0], opflow[..., 1])  
-    
+    hsv = np.zeros((160, 320, 3))
     hsv[:, :, 1] = cv2.cvtColor(rgb, cv2.COLOR_RGB2HSV)[:, :, 1]
     hsv[:, :, 0] = ang * (180/ np.pi / 2)
     hsv[:, :, 2] = cv2.normalize(mag, None, 0, 255, cv2.NORM_MINMAX)
@@ -77,7 +75,7 @@ def gen_frames_from_file(filename, foundation):
     frms = frms[-3:] # Last 3 mean flows
     if len(frms) == 3:
       frmsq = cv2.normalize(np.array(frms), None, norm_type=cv2.NORM_MINMAX)
-      yield frmsq, frame # Return original frame also for imshow
+      yield frmsq, frame # Return original frame for imshow
 
 def load_segments_todisk(video_path, labels_path, output_path):
   if not os.path.exists(output_path): os.makedirs(output_path)

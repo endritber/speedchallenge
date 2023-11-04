@@ -24,14 +24,14 @@ WeightsEnum.get_state_dict = get_state_dict
 
 def build_model(fine_tune=True, weights=None):
   if weights: print('INFO: loading pretrained model')
-  model = torchvision.models.efficientnet_b3(weights=weights); print('Running:', model._get_name())
+  model = torchvision.models.efficientnet_b1(weights=weights); print('Running:', model._get_name())
   for params in model.parameters():
     if fine_tune: params.requires_grad = True
     else: params.requires_grad = False
   model.classifier[1] = nn.Linear(in_features=model.classifier[1].in_features, out_features=1)
   return model
 
-# Add K-Fold strategy
+# TODO: add K-Fold strategy
 def run(data, kfold=False):
   if not kfold:
     n = len(data[0])
@@ -41,7 +41,6 @@ def run(data, kfold=False):
     train(train_data, val_data)
 
 def train_epoch(batch, data, desc, epoch=None, val_loss=None):
-  print('-'*50)
   losses = []
   for samples in (t:=tqdm(batch)):
     optimizer.zero_grad()
@@ -55,7 +54,7 @@ def train_epoch(batch, data, desc, epoch=None, val_loss=None):
       if epoch > 1:
         scheduler.step(val_loss)
     t.set_description(f'{desc}: mse_loss: {loss.item():.3f}')      
-  return losses
+  return torch.tensor(losses)
 
 def train(train_data, val_data):
   tlosses, vlosses = [], []
@@ -64,18 +63,21 @@ def train(train_data, val_data):
   for epoch in range(1, epochs+1):
     model.eval()
     val_losses = train_epoch(val_batches, val_data, 'Validating')
-    val_loss = torch.mean(torch.tensor(val_losses)).item()
-    train_batches = load_batch_indexes(np.arange(train_data[0].shape[0]), batch_size=batch_size, shuffle=True)
-    model.train()
-    train_losses = train_epoch(train_batches, train_data, 'Training', epoch, val_loss)
+    model.train();  train_batches = load_batch_indexes(np.arange(train_data[0].shape[0]), batch_size=batch_size, shuffle=True)
+    train_losses = train_epoch(train_batches, train_data, 'Training', epoch, torch.mean(val_losses))
+    print(f'INFO: train_loss {torch.mean(train_losses):.2f}; val_loss {torch.mean(val_losses):2f} | train_loss_std {torch.std(train_losses)}; val_loss_std {torch.std(val_losses)}')
     tlosses.extend(val_losses); vlosses.extend(train_losses)
     epoch_time = time.monotonic() - last     
-    print(f"Training (time) in {epoch_time * epochs // 60} min | Done (time) in {epoch_time * (epochs - epoch) // 60} min"); last = time.monotonic()
-    save_model(fn=f"models/{model._get_name()}_{TIMESTAMP}_{epoch}_{val_loss:.2f}.pt")
+    print(f"{model._get_name()} trains in {epoch_time * epochs // 60} min | Epoch done in {epoch_time * (epochs - epoch) // 60} min")
+    print('#'*120)
+    save_model(fn=f"models/{model._get_name()}_{TIMESTAMP}_{epoch}.pt")
+
+    last = time.monotonic()
   
   import matplotlib.pyplot as plt
-  plt.plot(vlosses)
-  plt.plot(tlosses)
+  plt.plot(vlosses.cpu().numpy(), label='Validation Loss')
+  plt.plot(tlosses.cpu().numpy(), label='Training Loss')
+  plt.legend()
   plt.show()
 
 def save_model(fn):
@@ -89,7 +91,9 @@ def load_filename(filename):
 
 def load_data():
   xs, ys = [], []
-  for filename in (t:=tqdm(os.listdir(OUTPUT_PATH))):
+  files = os.listdir(OUTPUT_PATH)
+  np.random.shuffle(files)
+  for filename in (t:=tqdm(files)):
     t.set_description(f'loading {filename}')
     if filename.endswith('pt'):
       x, y = load_filename(filename)
@@ -113,7 +117,7 @@ if __name__ == '__main__':
   batch_size = 32
   lr = 1e-4
 
-  model = build_model(weights=torchvision.models.EfficientNet_B3_Weights.DEFAULT, fine_tune=True).to(device)
+  model = build_model(weights=torchvision.models.EfficientNet_B1_Weights.DEFAULT, fine_tune=True).to(device)
   if LOAD:
     model_path = sys.argv[-1]
     print('INFO: loading saved model', model_path)

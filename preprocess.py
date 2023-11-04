@@ -18,7 +18,6 @@ def preprocess(foundation, filename, filename_out, transform=None):
   for frm, _ in tqdm(video.gen_frames_from_file(filename, foundation)):
     frms.append(frm)
   
-
   frms = frms[0:2] + frms + frms[-1:]
   big_x = torch.Tensor((np.concatenate([x.reshape(1, 160, 320, 3) for x in frms])))
   print(f"INFO: saving {filename_out} | shape:{big_x.shape}")
