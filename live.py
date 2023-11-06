@@ -20,7 +20,7 @@ if __name__ == '__main__':
     out = model(torch.tensor(frm, dtype=torch.float32).to(device).unsqueeze(0)).cpu().item()
     outs.append(out)
     if ROLLING:
-      out = np.mean(running_mean(np.array(outs[-180:]), WINDOWS))
+      out = np.mean(running_mean(np.array(outs[-38:]), WINDOWS))
     
     cv2.putText(original_frame, 'Predicted Speed: ' + str(round(out, 1)) + ' m/h', (10, 58), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (124,252,0), 2)
     cv2.imshow('frame', original_frame)

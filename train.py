@@ -132,6 +132,8 @@ def load_batch_indexes(indexes, batch_size, shuffle=False):
   indexes = np.array(indexes)
   if shuffle:
     np.random.shuffle(indexes)
+  else:
+    indexes = np.sort(indexes)
   return np.array(indexes)[:len(indexes) // batch_size*batch_size].reshape(-1, batch_size)
 
 def load_samples(samples, data, device):
@@ -142,7 +144,7 @@ def load_samples(samples, data, device):
 if __name__ == '__main__':
   device = 'mps' if torch.backends.mps.is_available() else 'cpu' 
  
-  epochs = 50
+  epochs = 300
   batch_size = 32
   lr = 1e-3
 
