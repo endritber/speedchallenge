@@ -9,7 +9,7 @@ from tqdm import tqdm
 DATA_PATH = 'data/segments'
 OUTPUT_PATH = 'data/preprocessed'
 
-def preprocess(foundation, filename, filename_out, transform=None):
+def preprocess(foundation, filename, filename_out):
   if not filename.endswith(".mp4"): return
   if os.path.isfile(filename_out): return
   if not os.path.exists(OUTPUT_PATH): os.makedirs(OUTPUT_PATH)
@@ -19,7 +19,7 @@ def preprocess(foundation, filename, filename_out, transform=None):
     frms.append(frm)
   
   frms = frms[0:2] + frms + frms[-1:]
-  big_x = torch.Tensor((np.concatenate([x.reshape(1, 160, 320, 3) for x in frms])))
+  big_x = torch.Tensor((np.concatenate([x.reshape(1, 3, 160, 320) for x in frms])))
   print(f"INFO: saving {filename_out} | shape:{big_x.shape}")
   torch.save({"x": big_x}, filename_out)
 
@@ -27,5 +27,5 @@ if __name__ == '__main__':
   foundation = video.get_foundation()
   for filename in os.listdir(DATA_PATH):
     if filename.endswith('.mp4'):
-      preprocess(foundation, os.path.join(DATA_PATH, filename), os.path.join(OUTPUT_PATH, filename.replace('.mp4', ".pt")), None)
-      print('#'*125)
+      preprocess(foundation, os.path.join(DATA_PATH, filename), os.path.join(OUTPUT_PATH, filename.replace('.mp4', ".pt")))
+      print('#'*120)
