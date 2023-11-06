@@ -28,7 +28,7 @@ WeightsEnum.get_state_dict = get_state_dict
 
 def build_model(fine_tune=True, weights=None):
   if weights: print('INFO: loading pretrained model')
-  model = torchvision.models.efficientnet_b2(weights=weights); print('Running:', model._get_name())
+  model = torchvision.models.efficientnet_b0(weights=weights); print('Running:', model._get_name())
   for params in model.parameters():
     if fine_tune: params.requires_grad = True
     else: params.requires_grad = False
@@ -37,39 +37,42 @@ def build_model(fine_tune=True, weights=None):
 
 # TODO: add K-Fold strategy
 def run(data, kfold=False):
-  n = len(data[0])
-  split = int(n*0.9)
-  train_data = [torch.cat(data[0][0:split], dim=0), torch.cat(data[1][0:split], dim=0)]
-  val_data = [torch.cat(data[0][split:n], dim=0), torch.cat(data[1][split:n], dim=0)]
+  tx, ty = torch.cat(data[0], dim=0), torch.cat(data[1], dim=0)
+  n = len(tx)
+  validation_percentage = 0.2
+  indices = torch.randperm(n)
+  validation_size = int(n * validation_percentage)
+  train_indices = indices[validation_size:]
+  val_indices = indices[:validation_size]
+  train_data = [tx[train_indices], ty[train_indices]]
+  val_data = [tx[val_indices], ty[val_indices]]
   train(train_data, val_data)
 
-def rolling_mse_loss(outputs, targets):
-  outputs = outputs.detach().cpu().numpy()
-  targets = targets.detach().cpu().numpy()
-  rolling_outputs = running_mean(outputs, WINDOWS)
-  rolling_loss = mean_squared_error(rolling_outputs, targets)
-  return rolling_loss
+# def rolling_mse_loss(outputs, targets):
+#   outputs = outputs.detach().cpu().numpy()
+#   targets = targets.detach().cpu().numpy()
+#   rolling_outputs = running_mean(outputs, WINDOWS)
+#   rolling_loss = mean_squared_error(rolling_outputs, targets)
+#   return rolling_loss
 
 def validation_step(batch, data):
   model.eval()
-  losses, rlosses = [], []
+  losses = []
   with torch.no_grad():
     for samples in (t:=tqdm(batch)):
-      inputs, targets = load_batch_samples(samples, data, device=device)
+      inputs, targets = load_samples(samples, data, device=device)
       outputs = model(inputs).squeeze(1)
       loss = F.mse_loss(outputs, targets)
-      rloss = rolling_mse_loss(outputs, targets)
       losses.append(loss.item())
-      rlosses.append(rloss)
-      t.set_description(f'Validating: mse_loss: {loss.item():.2f} | rloss: {rloss:.2f}')
-  return torch.tensor(losses), torch.tensor(rlosses)
+      t.set_description(f'Validating: mse_loss: {loss.item():.2f}')
+  return torch.tensor(losses)
 
 def train_step(batch, data, epoch=None, val_loss=None):
   model.train()
   losses = []
   for samples in (t:=tqdm(batch)):
     optimizer.zero_grad()
-    inputs, targets = load_batch_samples(samples, data, device)
+    inputs, targets = load_samples(samples, data, device)
     outputs = model(inputs).squeeze(1)
     loss = F.mse_loss(outputs, targets)
     losses.append(loss.item())
@@ -77,30 +80,31 @@ def train_step(batch, data, epoch=None, val_loss=None):
     optimizer.step()
     if epoch > 1:
       scheduler.step(val_loss)
-    t.set_description(f'Training: mse_loss: {loss.item():.2f}')
+    t.set_description(f'Training [{epoch}|{epochs}]: mse_loss: {loss.item():.2f}')
   return torch.tensor(losses)
 
 def train(train_data, val_data):
   tlosses, vlosses = [], []
-  val_indexes = load_batch_indexes(np.arange(val_data[0].shape[0]), batch_size=batch_size)
+  train_indices = np.arange(train_data[0].shape[0])
+  val_indices = np.arange(val_data[0].shape[0])
+  val_batch_indexes = load_batch_indexes(val_indices, batch_size=batch_size)
   last = time.monotonic()
   for epoch in range(1, epochs+1):
-    val_losses, rval_losses = validation_step(val_indexes, val_data)
-    train_indexes = load_batch_indexes(np.arange(train_data[0].shape[0]), batch_size=batch_size, shuffle=True)
-    train_losses = train_step(train_indexes, train_data, epoch, val_loss=torch.mean(val_losses))
+    val_losses = validation_step(val_batch_indexes, val_data)
+    train_losses = train_step(load_batch_indexes(train_indices, batch_size=batch_size, shuffle=True), train_data, epoch, val_loss=torch.mean(val_losses))
     tlosses.extend(val_losses); vlosses.extend(train_losses)
     epoch_time = time.monotonic() - last     
     save_model(fn=f"models/{model._get_name()}_{TIMESTAMP}_{epoch}.pt")
    
     ## INFO ##
-    print(f'INFO: train_loss {torch.mean(train_losses):.2f} | val_loss {torch.mean(val_losses):2f} | rolling val_loss {torch.mean(rval_losses):.2f}\
-          \nINFO: train_loss std {torch.std(train_losses):.2f} | val_loss std {torch.std(val_losses):.2f} | rval_loss std {torch.std(rval_losses):.2f}')
+    print(f'INFO: train_loss {torch.mean(train_losses):.2f} | val_loss {torch.mean(val_losses):.2f} \
+          \nINFO: train_loss std {torch.std(train_losses):.2f} | val_loss std {torch.std(val_losses):.2f}')
     print(f"{model._get_name()} total done in {epoch_time * epochs // 60} min | Now done in {epoch_time * (epochs - epoch) // 60} min"); last = time.monotonic()
     print('#'*120)
     
   import matplotlib.pyplot as plt
-  plt.plot(vlosses.cpu().numpy(), label='Validation Loss')
-  plt.plot(tlosses.cpu().numpy(), label='Training Loss')
+  plt.plot(vlosses, label='Validation Loss')
+  plt.plot(tlosses, label='Training Loss')
   plt.legend()
   plt.show()
 
@@ -125,11 +129,12 @@ def load_data():
   return (xs, ys)
 
 def load_batch_indexes(indexes, batch_size, shuffle=False):
+  indexes = np.array(indexes)
   if shuffle:
     np.random.shuffle(indexes)
   return np.array(indexes)[:len(indexes) // batch_size*batch_size].reshape(-1, batch_size)
 
-def load_batch_samples(samples, data, device):
+def load_samples(samples, data, device):
   X = data[0][samples].to(device)
   Y = data[1][samples].to(device)
   return X, Y
@@ -141,7 +146,7 @@ if __name__ == '__main__':
   batch_size = 32
   lr = 1e-3
 
-  model = build_model(weights=torchvision.models.EfficientNet_B2_Weights.DEFAULT).to(device)
+  model = build_model(weights=torchvision.models.EfficientNet_B0_Weights.DEFAULT).to(device)
   if LOAD:
     model_path = sys.argv[-1]
     print('INFO: loading saved model', model_path)
