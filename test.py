@@ -5,7 +5,7 @@ import torch
 from train import build_model
 from video import get_foundation, gen_frames_from_file
 
-WINDOWS = 10
+WINDOWS = 15
 
 def running_mean(x, N):
   return np.convolve(x, np.ones((N,))/N)[(N-1):]
@@ -13,7 +13,7 @@ def running_mean(x, N):
 if __name__ == '__main__':
   device = 'mps' if torch.backends.mps.is_available() else 'cpu' 
   model = build_model(fine_tune=False).to(device)
-  model.load_state_dict(torch.load("models/EfficientNet_1699123751_11.pt"))
+  model.load_state_dict(torch.load("models/EfficientNet_1699127602_50.pt"))
   model.eval()
   foundation = get_foundation()
   outs = []
