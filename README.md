@@ -16,7 +16,7 @@ Data
 Training
 ----
 ```
-# First, create segment of the training video:
+# First, create segments of the training video:
 ./video.py
 
 # Second, preprocess the data:
